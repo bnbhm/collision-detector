@@ -1,0 +1,2 @@
+- [ ] Minimum Seperation Vector distributted to all vertices in-collision.
+- [ ] Consider the actually colliding portion/polygon.

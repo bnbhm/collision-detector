@@ -3,10 +3,14 @@ use std::f32::consts::TAU;
 
 #[macroquad::main("Braideroids : Asteroids = Braid;")]
 async fn main() {
-    let mut asteroid1 = Asteroid::new(Body::new(250.0, 250.0, -20.0, 10.0, -2.0, 0.5), 3, 120.0);
-    let mut asteroid2 = Asteroid::new(Body::new(250.0, 250.0, 30.0, -30.0, 4.0, -1.0), 3, 50.0);
-    let mut asteroid3 = Asteroid::new(Body::new(250.0, 250.0, 40.0, -50.0, 5.0, -0.3), 3, 50.0);
-    let mut asteroid4 = Asteroid::new(Body::new(250.0, 250.0, -50.0, -10.0, 3.0, 0.5), 5, 100.0);
+    let mut asteroid1 = Asteroid::new(Body::new(600.0, 500.0, -25.0, 0.0, -2.0, 0.5), 3, 120.0);
+    let mut asteroid2 = Asteroid::new(Body::new(300.0, 500.0, 25.0, 0.0, 0.0, -1.0), 3, 50.0);
+    let mut asteroid3 = Asteroid::new(Body::new(500.0, 600.0, 0.0, 25.0, 0.0, -0.3), 5, 50.0);
+    let mut asteroid4 = Asteroid::new(Body::new(500.0, 300.0, 0.0, -25.0, 0.0, 0.5), 5, 100.0);
+
+    let mut sentient_timer = get_time() as f32;
+    let mut sentient_delta = 0.0;
+    let mut vanish_timer = get_time() as f32;
 
     let mut game_last_tick = get_time() as f32;
     loop {
@@ -29,14 +33,31 @@ async fn main() {
         asteroid3.draw();
         asteroid4.draw();
 
-        highlight_collision(&asteroid1, &asteroid2);
-        highlight_collision(&asteroid1, &asteroid3);
-        highlight_collision(&asteroid1, &asteroid4);
+        highlight_collision(&mut asteroid1, &mut asteroid2);
+        highlight_collision(&mut asteroid1, &mut asteroid3);
+        highlight_collision(&mut asteroid1, &mut asteroid4);
 
-        highlight_collision(&asteroid2, &asteroid3);
-        highlight_collision(&asteroid2, &asteroid4);
+        highlight_collision(&mut asteroid2, &mut asteroid3);
+        highlight_collision(&mut asteroid2, &mut asteroid4);
 
-        highlight_collision(&asteroid3, &asteroid4);
+        highlight_collision(&mut asteroid3, &mut asteroid4);
+
+        if (get_time() as f32 - sentient_timer) <= (5.0 + sentient_delta) {
+            draw_text(
+                "Sometimes the blocks behave sentient.",
+                50.0,
+                100.0,
+                32.0,
+                WHITE,
+            );
+            vanish_timer = get_time() as f32;
+        } else {
+            if (get_time() as f32 - vanish_timer) >= 5.0 {
+                sentient_timer = get_time() as f32;
+                vanish_timer = get_time() as f32;
+                sentient_delta = 5.0 * (rand::rand() as f32 / u32::MAX as f32);
+            }
+        }
 
         next_frame().await;
     }
@@ -49,7 +70,7 @@ fn draw_vertices(object: &impl Shape) {
     });
 }
 
-fn highlight_collision(asteroid1: &Asteroid, asteroid2: &Asteroid) {
+fn highlight_collision(asteroid1: &mut Asteroid, asteroid2: &mut Asteroid) {
     let collided = collision(asteroid1, asteroid2);
     if let Some(collision_info) = collided {
         /* draw_poly(
@@ -68,30 +89,63 @@ fn highlight_collision(asteroid1: &Asteroid, asteroid2: &Asteroid) {
             asteroid2.body.ang_pos.to_degrees(),
             GRAY,
         ); */
-        collision_info.which_object_which_vertice[0]
-            .iter()
-            .for_each(|vertice_id| {
-                let vertice = asteroid1.shape()[*vertice_id];
-                draw_circle(vertice.x, vertice.y, 4.0, RED);
+        collision_info[0].iter().for_each(|vertice_collision_info| {
+            let vertice = asteroid1.shape()[vertice_collision_info.vertice_index];
+            draw_circle(vertice.x, vertice.y, 4.0, RED);
 
-                let vertice_p = asteroid1.shape()
-                    [(*vertice_id + asteroid1.shape().len() - 1) % asteroid1.shape().len()];
-                let vertice_n = asteroid1.shape()[(*vertice_id + 1) % asteroid1.shape().len()];
-                draw_line(vertice.x, vertice.y, vertice_p.x, vertice_p.y, 3.0, RED);
-                draw_line(vertice.x, vertice.y, vertice_n.x, vertice_n.y, 3.0, RED);
-            });
-        collision_info.which_object_which_vertice[1]
-            .iter()
-            .for_each(|vertice_id| {
-                let vertice = asteroid2.shape()[*vertice_id];
-                draw_circle(vertice.x, vertice.y, 4.0, RED);
+            let vertice_p = asteroid1.shape()[(vertice_collision_info.vertice_index
+                + asteroid1.shape().len()
+                - 1)
+                % asteroid1.shape().len()];
+            let vertice_n = asteroid1.shape()
+                [(vertice_collision_info.vertice_index + 1) % asteroid1.shape().len()];
+            draw_line(vertice.x, vertice.y, vertice_p.x, vertice_p.y, 3.0, RED);
+            draw_line(vertice.x, vertice.y, vertice_n.x, vertice_n.y, 3.0, RED);
 
-                let vertice_p = asteroid2.shape()
-                    [(*vertice_id + asteroid2.shape().len() - 1) % asteroid2.shape().len()];
-                let vertice_n = asteroid2.shape()[(*vertice_id + 1) % asteroid2.shape().len()];
-                draw_line(vertice.x, vertice.y, vertice_p.x, vertice_p.y, 3.0, RED);
-                draw_line(vertice.x, vertice.y, vertice_n.x, vertice_n.y, 3.0, RED);
-            });
+            let mtv = 1.0
+                * vertice_collision_info.mtv.min_overlap_value
+                * vertice_collision_info.mtv.min_overlap_axis;
+
+            draw_line(
+                vertice.x,
+                vertice.y,
+                vertice.x + mtv.x,
+                vertice.y + mtv.y,
+                2.0,
+                WHITE,
+            );
+            asteroid1.body.lin_acc = 100.0 * mtv;
+            asteroid1.body.ang_acc = (vertice - asteroid1.body.lin_pos).perp_dot(mtv);
+        });
+        collision_info[1].iter().for_each(|vertice_collision_info| {
+            let vertice = asteroid2.shape()[vertice_collision_info.vertice_index];
+            draw_circle(vertice.x, vertice.y, 4.0, RED);
+
+            let vertice_p = asteroid2.shape()[(vertice_collision_info.vertice_index
+                + asteroid2.shape().len()
+                - 1)
+                % asteroid2.shape().len()];
+            let vertice_n = asteroid2.shape()
+                [(vertice_collision_info.vertice_index + 1) % asteroid2.shape().len()];
+            draw_line(vertice.x, vertice.y, vertice_p.x, vertice_p.y, 3.0, RED);
+            draw_line(vertice.x, vertice.y, vertice_n.x, vertice_n.y, 3.0, RED);
+
+            let mtv = 1.0
+                * vertice_collision_info.mtv.min_overlap_value
+                * vertice_collision_info.mtv.min_overlap_axis;
+
+            draw_line(
+                vertice.x,
+                vertice.y,
+                vertice.x + mtv.x,
+                vertice.y + mtv.y,
+                2.0,
+                WHITE,
+            );
+
+            asteroid2.body.lin_acc = 100.0 * mtv;
+            asteroid2.body.ang_acc = (vertice - asteroid2.body.lin_pos).perp_dot(mtv);
+        });
     }
 }
 
@@ -121,36 +175,32 @@ impl Shape for Asteroid {
     }
 }
 
-struct CollisionInfo {
-    which_object_which_vertice: [Vec<usize>; 2],
+struct VerticeCollisionInfo {
+    vertice_index: usize,
+    mtv: MTV,
 }
 
-fn collision(object1: &impl Shape, object2: &impl Shape) -> Option<CollisionInfo> {
-    let mut collided = false;
+fn collision(object1: &impl Shape, object2: &impl Shape) -> Option<[Vec<VerticeCollisionInfo>; 2]> {
+    let mut info1 = Vec::new();
+    let mut info2 = Vec::new();
 
-    let mut collision_info = CollisionInfo {
-        which_object_which_vertice: [Vec::new(), Vec::new()],
-    };
-
-    for (it, vertice) in object1.shape().iter().enumerate() {
-        if inside(&vertice, object2) {
-            collision_info.which_object_which_vertice[0].push(it);
-            collided = true;
+    for (vertice_index, vertice) in object1.shape().iter().enumerate() {
+        if let Some(mtv) = inside(&vertice, object2) {
+            info1.push(VerticeCollisionInfo { vertice_index, mtv });
         }
     }
 
-    for (it, vertice) in object2.shape().iter().enumerate() {
-        let is_inside = inside(&vertice, object1);
-        if is_inside {
-            collision_info.which_object_which_vertice[1].push(it);
-            collided = true;
+    for (vertice_index, vertice) in object2.shape().iter().enumerate() {
+        if let Some(mtv) = inside(&vertice, object1) {
+            info2.push(VerticeCollisionInfo { vertice_index, mtv });
         }
     }
 
-    if collided {
-        return Some(collision_info);
+    if info1.is_empty() && info2.is_empty() {
+        return None;
+    } else {
+        return Some([info1, info2]);
     }
-    None
 }
 
 fn rotate(vector: &Vec2, theta: f32) -> Vec2 {
@@ -166,7 +216,12 @@ fn rotate(vector: &Vec2, theta: f32) -> Vec2 {
     } * *vector
 }
 
-fn inside(vertice: &Vec2, object: &impl Shape) -> bool {
+struct MTV {
+    min_overlap_value: f32,
+    min_overlap_axis: Vec2,
+}
+
+fn inside(vertice: &Vec2, object: &impl Shape) -> Option<MTV> {
     let vertices = object.shape();
     let mut surface_perps = vec![];
 
@@ -174,11 +229,13 @@ fn inside(vertice: &Vec2, object: &impl Shape) -> bool {
         let b = vertices[(it + 1) % vertices.len()];
         let a = vertices[it % vertices.len()];
         let normal = b - a;
-        let orthogonal = rotate(&normal, TAU / 4.0);
+        let orthogonal = rotate(&normal, TAU / 4.0).normalize();
 
         surface_perps.push(orthogonal);
     }
 
+    let mut min_overlap_value = f32::MAX;
+    let mut min_overlap_axis = surface_perps[0];
     for axis in surface_perps {
         let projections: Vec<f32> = vertices.iter().map(|vertice| vertice.dot(axis)).collect();
         let min_proj = (&projections)
@@ -192,15 +249,25 @@ fn inside(vertice: &Vec2, object: &impl Shape) -> bool {
         let vertice_proj = vertice.dot(axis);
 
         if vertice_proj < *min_proj {
-            return false;
+            return None;
         }
 
         if vertice_proj > *max_proj {
-            return false;
+            return None;
+        }
+
+        let overlap = (*max_proj - vertice_proj).min(vertice_proj - *min_proj);
+
+        if overlap < min_overlap_value {
+            min_overlap_value = overlap;
+            min_overlap_axis = axis;
         }
     }
 
-    return true;
+    return Some(MTV {
+        min_overlap_value,
+        min_overlap_axis,
+    });
 }
 
 fn reflect(body: &mut Body) {
@@ -296,9 +363,18 @@ trait Update {
 impl Update for Body {
     fn update(&mut self, dt: f32) -> () {
         self.lin_vel += self.lin_acc * dt;
+        if self.lin_vel.length() > 100.0 {
+            self.lin_vel = 100.0 * self.lin_vel / self.lin_vel.length();
+        }
         self.lin_pos += self.lin_vel * dt;
 
         self.ang_vel += self.ang_acc * dt;
+        if self.ang_vel.abs() > 3.0 {
+            self.ang_vel = 3.0 * self.ang_vel / self.ang_vel.abs();
+        }
         self.ang_pos += self.ang_vel * dt;
+
+        self.lin_acc = Vec2::new(0.0, 0.0);
+        self.ang_acc = 0.0;
     }
 }
